@@ -814,7 +814,9 @@ function superPenales86() {
   }
 
   // ── Lógica de disparo ──
+  let currentTargetZone = null;
   function animateShot(targetZone) {
+    currentTargetZone = targetZone;
     canShoot = false;
     const ballTarget = {
       x: targetZone.x + targetZone.w / 2,
@@ -825,7 +827,14 @@ function superPenales86() {
     const duration = 500;
     const startTime = performance.now();
 
-    const diveZone = ZONES[Math.floor(Math.random() * ZONES.length)];
+    // El arquero elige aleatoriamente una de las 3 columnas (izq, centro, der)
+    const diveCol = Math.floor(Math.random() * 3); // 0=izq, 1=centro, 2=der
+    // Para la fila siempre usamos la fila de abajo (row=1) en los lados
+    const diveZone = ZONES.find(
+      (z) =>
+        z.col === diveCol &&
+        (diveCol === 1 ? z.row === targetZone.row : z.row === 1),
+    );
     keeper.startX = KEEPER_HOME_X;
     keeper.startY = KEEPER_HOME_Y;
 
@@ -839,11 +848,9 @@ function superPenales86() {
         keeper.reaching = false;
       }
     } else {
+      // Siempre animación "abajo" para izquierda/derecha
       keeper.endX = diveZone.x + diveZone.w / 2;
-      keeper.endY =
-        diveZone.row === 0
-          ? Math.max(diveZone.y + diveZone.h / 2, goal.y + H * 0.05)
-          : KEEPER_HOME_Y;
+      keeper.endY = KEEPER_HOME_Y;
       keeper.reaching = false;
     }
 
@@ -868,25 +875,15 @@ function superPenales86() {
   }
 
   function resolveShot(diveZone) {
-    const reach = KW * 0.4;
-    const upReach = keeper.reaching ? KH * 0.6 : KH * 0.18;
-    const kRect = {
-      x: keeper.endX - KW / 2 - reach,
-      y: keeper.endY - KH / 2 - upReach,
-      w: KW + reach * 2,
-      h: KH + upReach,
-    };
-    const bRect = {
-      x: ball.x - ball.r,
-      y: ball.y - ball.r,
-      w: ball.r * 2,
-      h: ball.r * 2,
-    };
-    const saved =
-      bRect.x < kRect.x + kRect.w &&
-      bRect.x + bRect.w > kRect.x &&
-      bRect.y < kRect.y + kRect.h &&
-      bRect.y + bRect.h > kRect.y;
+    // El arquero ataja si eligió la misma columna que el tiro.
+    // Para el centro (col=1) además debe coincidir la fila (arriba/abajo).
+    const tz = currentTargetZone;
+    let saved;
+    if (diveZone.col === 1) {
+      saved = tz.col === 1 && diveZone.row === tz.row;
+    } else {
+      saved = diveZone.col === tz.col;
+    }
 
     results.push(saved ? "atajada" : "gol");
     if (!saved) score++;
