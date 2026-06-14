@@ -1084,7 +1084,7 @@ export function mostrarHint() {
   const esMobile = "ontouchstart" in window || window.innerWidth < 768;
 
   const textoFinal = esMobile
-    ? "Para guardar tu mensaje presioná la imagen&nbsp;→"
+    ? "Para escribir y guardar tu mensaje presioná la imagen&nbsp;→"
     : 'Para guardar tu mensaje presioná <span class="hint-keys"><kbd>Shift</kbd><span class="hint-plus">+</span><kbd>Enter</kbd></span> o la imagen&nbsp;→';
 
   const secuencia = [
