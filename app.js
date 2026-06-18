@@ -135,10 +135,10 @@ function fechaAnterior(isoDate) {
   return dt.toISOString().slice(0, 10);
 }
 
-async function cargarDiaAnterior() {
+async function cargarDiaAnterior(diaExacto) {
   if (cargandoHistoria || !hasMasHistoria || !fechaMasAntigua) return;
   cargandoHistoria = true;
-  const diaAPedir = fechaAnterior(fechaMasAntigua);
+  const diaAPedir = diaExacto || fechaAnterior(fechaMasAntigua);
   setStatus("cargando historia...", "#aaa");
   await new Promise((r) => setTimeout(r, 380));
 
@@ -183,7 +183,7 @@ async function cargarDiaAnterior() {
           } else {
             fechaMasAntigua = prevRows[0].fecha.slice(0, 10);
             cargandoHistoria = false;
-            await cargarDiaAnterior();
+            await cargarDiaAnterior(fechaMasAntigua);
             return;
           }
         } else {
@@ -390,6 +390,20 @@ function insertTextAtCursor(text) {
 
 setCanvasImage(false).then(() => {
   mostrarHint();
+});
+
+// Hint de /tip: aparece siempre que llegás al tope del scroll
+let _tipHintCooldown = false;
+window.addEventListener("scroll", () => {
+  if (window.scrollY < 5 && !_tipHintCooldown) {
+    _tipHintCooldown = true;
+    mostrarHintPersonalizado(
+      'Probá guardando <span style="color:#7b1fa2">/tip</span>',
+    );
+    setTimeout(() => {
+      _tipHintCooldown = false;
+    }, 10000);
+  }
 });
 
 btnCanvas.addEventListener(
@@ -618,10 +632,14 @@ async function cargar() {
       if (resPrev.ok) {
         const prevRows = await resPrev.json();
         hasMasHistoria = prevRows.length > 0;
-        if (hasMasHistoria && !fechaMasAntigua) fechaMasAntigua = hoy;
+        if (hasMasHistoria && !fechaMasAntigua)
+          fechaMasAntigua = prevRows[0].fecha.slice(0, 10);
       }
 
       setStatus("", "");
+      if (!rows.length && hasMasHistoria) {
+        await cargarDiaAnterior(fechaMasAntigua);
+      }
       requestAnimationFrame(() => {
         window.scrollTo({
           top: document.body.scrollHeight,
