@@ -5,23 +5,42 @@
 }
 
 body {
-  background: #fff;
+  background-color: #fff;
   font-family: system-ui, sans-serif;
   min-height: 100dvh;
-  /* Escala fluida: 13px en 320px, 16px en 768px+ */
   font-size: clamp(13px, 2.8vw, 16px);
+  overflow-x: hidden;
+  max-width: 100vw;
 }
 
 #page {
   position: relative;
+  z-index: 2;
   min-height: 100dvh;
   width: 100%;
   padding: 1.4rem;
   padding-bottom: 6rem;
   cursor: text;
+  background-color: #fff;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transition: transform 0.7s cubic-bezier(0.65, 0, 0.35, 1);
 }
 
-/* Todo el contenido histórico + el área de escritura en flujo normal */
+/* El perspective para el flip 3D solo se activa cuando es necesario.
+   Va en este wrapper (y no en body) para que #wb-canvas, que es
+   position:fixed e hijo directo de body, siga anclado al viewport
+   y no al alto total del documento. */
+#page-perspective.page-flip-active {
+  perspective: 1800px;
+}
+
+/* Dorso: la hoja gira y deja ver la pizarra ocupando toda la pantalla */
+#page.page-flipped {
+  transform: rotateY(180deg);
+  pointer-events: none;
+}
+
 #committed {
   display: inline;
   white-space: pre-wrap;
@@ -34,7 +53,9 @@ body {
 }
 
 #committed .msg {
-  display: inline;
+  display: block;
+  margin-bottom: 0.4em;
+  background-color: #fff;
 }
 
 #committed .msg a {
@@ -53,7 +74,6 @@ body {
   color: #1558b0;
 }
 
-/* Línea separadora de día */
 #committed .date-separator {
   display: block;
   text-align: center;
@@ -62,10 +82,10 @@ body {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   margin: 1.8em 0 1.2em;
+  background-color: #fff;
   user-select: none;
 }
 
-/* El área donde el usuario escribe - editor nativo contenteditable */
 #editor {
   display: inline;
   white-space: pre-wrap;
@@ -73,26 +93,16 @@ body {
   font-size: 1em;
   line-height: 1.7;
   color: rgba(0, 0, 0, 0.65);
+  background-color: #fff;
   outline: none;
-  /* min-width removido: causaba gap visual cuando el editor estaba vacío */
   caret-color: auto;
-  /* vertical-align: top puede causar desalineación con committed en algunos browsers */
-}
-
-@keyframes blink {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0;
-  }
 }
 
 #status {
   position: fixed;
   bottom: 1rem;
   left: 1.4rem;
+  z-index: 3;
   font-size: 0.8em;
   color: #aaa;
   pointer-events: none;
@@ -105,6 +115,7 @@ body {
   position: fixed;
   bottom: 1.4rem;
   right: 1.4rem;
+  z-index: 9998;
   width: 120px;
   height: 120px;
   cursor: pointer;
@@ -129,10 +140,8 @@ body {
 }
 
 /* =========================
-   CELULARES (por defecto)
-   0px - 767px
+   RESPONSIVE
 ========================= */
-
 #page {
   padding: 1rem;
   padding-bottom: 6rem;
@@ -156,15 +165,11 @@ body {
     width: auto;
   }
 
-  #editor {
-    /* sin min-width ni vertical-align para que fluya exactamente después del committed */
+  #wb-toolbar,
+  #wb-canvas {
+    display: none !important;
   }
 }
-
-/* =========================
-   TABLETS
-   768px - 1023px
-========================= */
 
 @media (min-width: 768px) {
   #page {
@@ -193,11 +198,6 @@ body {
   }
 }
 
-/* =========================
-   NOTEBOOKS / DESKTOP
-   1024px - 1439px
-========================= */
-
 @media (min-width: 1024px) {
   #page {
     max-width: 960px;
@@ -222,11 +222,6 @@ body {
     left: calc(50% - 480px);
   }
 }
-
-/* =========================
-   DESKTOP GRANDE
-   1440px - 1919px
-========================= */
 
 @media (min-width: 1440px) {
   #page {
@@ -254,11 +249,6 @@ body {
     font-size: 0.87em;
   }
 }
-
-/* =========================
-   ULTRAWIDE / 2K / 4K
-   1920px+
-========================= */
 
 @media (min-width: 1920px) {
   #page {
@@ -291,7 +281,6 @@ body {
 /* ========================
    EMBED PLAYER FLOTANTE
 ======================== */
-
 #embed-player {
   position: fixed;
   z-index: 9999;
@@ -308,19 +297,12 @@ body {
   clip-path: none;
 }
 
-/* Sin ::before blur — el panel es opaco como el botón canvas */
-#embed-player::before {
-  display: none;
-}
-
-/* ── Toolbar ── */
 #embed-toolbar {
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 0 10px 0 14px;
   height: 44px;
-  /* Gris translúcido como el nav del browser */
   background: rgba(255, 255, 255, 0.12);
   backdrop-filter: blur(1px);
   -webkit-backdrop-filter: blur(14px);
@@ -337,7 +319,6 @@ body {
   cursor: grabbing;
 }
 
-/* Contenido sobre el ::before del panel */
 #embed-content {
   position: relative;
   z-index: 1;
@@ -347,14 +328,12 @@ body {
   height: 100%;
 }
 
-/* En mobile el content es absoluto para cubrir todo el cuadrado */
 .embed-mobile #embed-content {
   position: absolute;
   inset: 0;
   z-index: 1;
 }
 
-/* Icono de arrastre — seis puntos */
 #embed-drag-icon {
   display: flex;
   align-items: center;
@@ -438,7 +417,6 @@ body {
   background: rgba(0, 0, 0, 0.06);
 }
 
-/* ── Contenido ── */
 #embed-content iframe {
   display: block;
   border: none;
@@ -446,7 +424,6 @@ body {
   height: 100%;
 }
 
-/* ── Handle de resize custom (esquina inferior derecha) ── */
 #embed-resize-handle {
   position: absolute;
   bottom: 0;
@@ -459,7 +436,6 @@ body {
   align-items: flex-end;
   justify-content: flex-end;
   padding: 5px;
-  /* bloquea eventos al iframe para que no robe el mouse */
   pointer-events: all;
 }
 
@@ -472,7 +448,6 @@ body {
   opacity: 0.7;
 }
 
-/* ── Handle de swipe (solo mobile) ── */
 #embed-handle {
   width: 100%;
   height: 20px;
@@ -493,7 +468,6 @@ body {
   background: #ccc;
 }
 
-/* Panel en modo mobile: cuadrado compacto, misma esquina y margen que el botón */
 #embed-player.embed-mobile {
   border-radius: 0;
   clip-path: none;
@@ -504,7 +478,6 @@ body {
   position: fixed;
 }
 
-/* Botón cerrar flotante dentro del cuadrado mobile */
 #embed-close-mobile {
   position: absolute;
   top: 5px;
@@ -525,7 +498,6 @@ body {
   padding: 0;
 }
 
-/* Handle de arrastre en la parte inferior del cuadrado mobile */
 #embed-player.embed-mobile #embed-handle {
   position: absolute;
   bottom: 0;
@@ -551,7 +523,6 @@ body {
   background: rgba(255, 255, 255, 0.7);
 }
 
-/* Handle de resize esquina inferior derecha (solo mobile) */
 #embed-resize-mobile {
   position: absolute;
   bottom: 0;
@@ -571,13 +542,9 @@ body {
   opacity: 0.7;
 }
 
-/* Posición inicial del embed-player manejada por JS en openEmbed() */
-
 /* ========================
    HINT DEL BOTÓN
 ======================== */
-
-/* canvas base: 120px, bottom: 1.4rem → centro = 1.4rem + 60px */
 #btn-hint {
   position: fixed;
   bottom: calc(1.4rem + 60px);
@@ -630,7 +597,60 @@ body {
   color: #000;
 }
 
-/* Teclas */
+#btn-mini-bubble {
+  position: fixed;
+  bottom: calc(1.4rem + 60px);
+  right: calc(1.4rem + 120px + 14px);
+  transform: translateY(calc(50% + 3px));
+  display: flex;
+  align-items: center;
+  width: 160px;
+  min-height: 44px;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 10px;
+  padding: 7px 10px;
+  box-shadow: 0 8px 20px rgba(2, 11, 54, 0.404);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 0.25s ease,
+    transform 0.25s ease;
+  z-index: 9999;
+}
+
+#btn-mini-bubble.mini-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+#btn-mini-bubble.mini-hiding {
+  opacity: 0;
+  pointer-events: none;
+}
+
+#btn-mini-input {
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  max-height: 72px;
+  border: none;
+  outline: none;
+  resize: none;
+  overflow: hidden;
+  background: transparent;
+  color: rgba(0, 0, 0, 0.68);
+  font:
+    500 0.92em/1.35 system-ui,
+    sans-serif;
+  letter-spacing: 0;
+}
+
+#btn-mini-input::placeholder {
+  color: rgba(0, 0, 0, 0.48);
+  opacity: 1;
+}
+
 .hint-keys {
   display: inline-flex;
   align-items: center;
@@ -660,11 +680,17 @@ body {
 
 @media (max-width: 767px) {
   #btn-hint {
-    /* botón: right 1.4rem, width 120px → hint queda a la izquierda con 12px de gap */
     right: calc(1.4rem + 120px + 12px);
-    bottom: calc(1.4rem + 60px); /* mismo centro vertical que el botón */
+    bottom: calc(1.4rem + 60px);
     max-width: calc(100vw - 1.4rem - 120px - 12px - 1rem);
-    font-weight: 500; /* no se sale por la izquierda */
+    font-weight: 500;
+  }
+
+  #btn-mini-bubble {
+    right: calc(1.4rem + 120px + 12px);
+    bottom: calc(1.4rem + 60px);
+    width: 160px;
+    padding: 7px 9px;
   }
 }
 
@@ -673,6 +699,12 @@ body {
     right: calc(1.6rem + 108px + 14px);
     bottom: calc(1.6rem + 54px);
     font-weight: 500;
+  }
+
+  #btn-mini-bubble {
+    right: calc(1.6rem + 108px + 14px);
+    bottom: calc(1.6rem + 54px);
+    width: 180px;
   }
 }
 
@@ -686,10 +718,21 @@ body {
   .hint-keys kbd {
     font-size: 0.92em;
   }
+
+  #btn-mini-bubble {
+    right: calc(1.8rem + 100px + 14px);
+    bottom: calc(1.8rem + 50px);
+    width: 200px;
+  }
 }
 
 @media (min-width: 1440px) {
   #btn-hint {
+    right: calc(2rem + 96px + 14px);
+    bottom: calc(2rem + 48px);
+  }
+
+  #btn-mini-bubble {
     right: calc(2rem + 96px + 14px);
     bottom: calc(2rem + 48px);
   }
@@ -700,6 +743,224 @@ body {
     right: calc(2.2rem + 92px + 14px);
     bottom: calc(2.2rem + 46px);
   }
+
+  #btn-mini-bubble {
+    right: calc(2.2rem + 92px + 14px);
+    bottom: calc(2.2rem + 46px);
+  }
 }
 
-/* (munari-panel y munari-panel-anclado eliminados — el dibujo va directo en btn-canvas) */
+/* ========================
+   WHITEBOARD
+======================== */
+#wb-canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 1;
+  pointer-events: none;
+  touch-action: none;
+  background: transparent;
+}
+
+#wb-canvas.wb-active {
+  pointer-events: all !important;
+  cursor: crosshair !important;
+}
+
+#wb-toolbar {
+  position: fixed;
+  bottom: 1.4rem;
+  left: calc(1rem + 32px + 8px);
+  z-index: 9998;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#wb-btn {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: #bbb;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  padding: 0;
+  flex-shrink: 0;
+  transition:
+    color 0.15s,
+    background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#wb-btn:hover {
+  color: #555;
+}
+
+#wb-clear-btn {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: #bbb;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  padding: 0;
+  flex-shrink: 0;
+  transition:
+    color 0.15s,
+    background 0.15s,
+    opacity 0.2s;
+  opacity: 0;
+  pointer-events: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#wb-clear-btn:hover {
+  color: #e53935;
+}
+
+#wb-color-picker {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+
+#wb-color-picker button {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  transition:
+    transform 0.15s,
+    box-shadow 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#wb-color-picker button:hover {
+  transform: scale(1.1);
+}
+
+#wb-color-wheel {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red);
+  transition:
+    transform 0.15s,
+    box-shadow 0.15s;
+  -webkit-tap-highlight-color: transparent;
+  position: relative;
+}
+
+#wb-color-wheel:hover {
+  transform: scale(1.1);
+}
+
+#wb-color-input {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+#wb-btn:active,
+#wb-clear-btn:active {
+  transform: scale(0.9);
+}
+
+/* Text toolbar */
+#txt-btn {
+  position: fixed;
+  bottom: 1.4rem;
+  left: 1rem;
+  z-index: 9998;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: #bbb;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  padding: 0;
+  transition:
+    color 0.15s,
+    background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#txt-btn:hover {
+  color: #555;
+}
+
+#txt-popover {
+  position: fixed;
+  z-index: 9999;
+  background: #fff;
+  border: 0.5px solid rgba(0, 0, 0, 0.12);
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.13);
+  display: flex;
+  flex-direction: row;
+  gap: 2px;
+  padding: 5px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-6px);
+  transition:
+    opacity 0.15s,
+    transform 0.15s;
+}
+
+#txt-popover button {
+  width: 34px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: #222;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  padding: 0;
+  transition: background 0.12s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#txt-popover button:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+/* Mobile adjustments for text toolbar */
+@media (max-width: 767px) {
+  #txt-btn {
+    display: none !important;
+  }
+  #txt-popover {
+    display: none !important;
+  }
+}

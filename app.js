@@ -1,11 +1,26 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-import { committedEl, editor, statusEl, btnCanvas } from "./dom.js";
-import { setCanvasImage } from "./canvas-button.js";
+import {
+  committedEl,
+  editor,
+  statusEl,
+  btnCanvas,
+  btnMiniBubble,
+  btnMiniInput,
+} from "./dom.js";
+import { setCanvasImage, loadInitialCanvasImage } from "./canvas-button.js";
 import { renderConLinks } from "./embeds.js";
-import { COMANDOS, ejecutarComando, mostrarHint } from "./commands.js";
+import {
+  COMANDOS,
+  ejecutarComando,
+  mostrarHint,
+  mostrarHintPersonalizado,
+} from "./commands.js";
+import "./whiteboard.js";
+import { getWhiteboardThumbnail, clearWhiteboard } from "./whiteboard.js";
+import "./text-toolbar.js";
 
-const ENV = "prod"; // ← cambiá esto: "prod" o "dev"
+const ENV = "prod";
 const TABLE = ENV === "prod" ? "notas" : "notas_dev";
 
 if (ENV === "dev") {
@@ -259,12 +274,153 @@ function scrollToEditorAndFocus() {
   }, 400);
 }
 
+function isEditorVisible() {
+  const rect = editor.getBoundingClientRect();
+  const vh = window.visualViewport
+    ? window.visualViewport.height
+    : window.innerHeight;
+  return rect.bottom > 0 && rect.top < vh;
+}
+
+function isHintActive() {
+  const hintEl = document.getElementById("btn-hint");
+  if (!hintEl || hintEl.style.display === "none") return false;
+  return (
+    hintEl.classList.contains("hint-visible") ||
+    hintEl.classList.contains("hint-hiding") ||
+    parseFloat(getComputedStyle(hintEl).opacity) > 0
+  );
+}
+
+function isCanvasAnimating() {
+  return !!(btnCanvas._munariAnimId || btnCanvas._penalesAnimId);
+}
+
+function showMiniWriteBubble() {
+  if (!btnMiniBubble || !btnMiniInput) return;
+  if (isHintActive()) return;
+  if (isEditorVisible()) return;
+  if (isCanvasAnimating()) return;
+  btnMiniBubble.classList.remove("mini-hiding");
+  btnMiniBubble.classList.add("mini-visible");
+  btnMiniBubble.style.opacity = "1";
+  btnMiniBubble.style.pointerEvents = "auto";
+  btnMiniInput.value = "";
+  btnMiniInput.style.height = "";
+  btnMiniInput.style.color = "";
+}
+
+function hideMiniWriteBubble() {
+  if (!btnMiniBubble || !btnMiniInput) return;
+  btnMiniBubble.classList.add("mini-hiding");
+  btnMiniBubble.classList.remove("mini-visible");
+  btnMiniBubble.style.opacity = "";
+  btnMiniBubble.style.pointerEvents = "";
+  btnMiniInput.blur();
+}
+
+function actualizarVisibilidadMini() {
+  if (isHintActive()) {
+    hideMiniWriteBubble();
+    return;
+  }
+  if (isCanvasAnimating()) {
+    hideMiniWriteBubble();
+    return;
+  }
+  if (isEditorVisible()) {
+    hideMiniWriteBubble();
+  } else {
+    showMiniWriteBubble();
+  }
+}
+
+const COMANDO_COLOR_MINI = "#7b1fa2";
+
+function actualizarColorMini() {
+  if (!btnMiniInput) return;
+  const texto = btnMiniInput.value.trim().toLowerCase();
+  const esComando =
+    texto.startsWith("/") &&
+    Object.keys(COMANDOS).some((cmd) => cmd.startsWith(texto));
+  btnMiniInput.style.color = esComando ? COMANDO_COLOR_MINI : "";
+}
+
+function redirectMiniBubbleToEditor(textoInicial) {
+  hideMiniWriteBubble();
+  window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+  setTimeout(() => {
+    scrollToEditorAndFocus();
+    if (textoInicial) {
+      setEditorText(textoInicial);
+      const sel = window.getSelection();
+      if (sel) {
+        const range = document.createRange();
+        range.selectNodeContents(editor);
+        range.collapse(false);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+      updateHeight();
+      actualizarColorEditor();
+    }
+  }, 180);
+}
+
+async function ejecutarDesdeMini() {
+  const texto = btnMiniInput.value.trim();
+  if (!texto) return;
+  const mensajeLimpio = texto.toLowerCase();
+  hideMiniWriteBubble();
+  if (ejecutarComando(mensajeLimpio)) return;
+  guardando = true;
+  guardar(texto).finally(() => {
+    guardando = false;
+  });
+}
+
+if (btnMiniInput) {
+  btnMiniInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      ejecutarDesdeMini();
+      return;
+    }
+    if (e.key === " ") {
+      e.preventDefault();
+      redirectMiniBubbleToEditor(btnMiniInput.value);
+    }
+  });
+
+  btnMiniInput.addEventListener("beforeinput", (e) => {
+    if (e.data === " ") {
+      e.preventDefault();
+      redirectMiniBubbleToEditor(btnMiniInput.value);
+    }
+  });
+
+  btnMiniInput.addEventListener("input", () => {
+    btnMiniInput.style.height = "auto";
+    btnMiniInput.style.height = `${Math.min(btnMiniInput.scrollHeight, 72)}px`;
+    if (btnMiniInput.value.includes(" ")) {
+      const textoSinEspacio = btnMiniInput.value.replace(/\s+/g, "");
+      btnMiniInput.value = "";
+      redirectMiniBubbleToEditor(textoSinEspacio);
+      return;
+    }
+    actualizarColorMini();
+  });
+}
+
+window.addEventListener("scroll", actualizarVisibilidadMini, { passive: true });
+if (window.visualViewport) {
+  window.visualViewport.addEventListener("resize", actualizarVisibilidadMini);
+}
+window.addEventListener("btn-hint-finished", actualizarVisibilidadMini);
+
 function getEditorText() {
-  // Usamos textContent para obtener el texto crudo, incluyendo espacios y saltos de línea exactos
   let text = editor.textContent || "";
-  // Solo eliminamos caracteres especiales no deseados (espacio duro, zero-width space)
   text = text.replace(/\u00A0/g, " ").replace(/\u200B/g, "");
-  // No hacemos ningún otro reemplazo ni normalización
   return text;
 }
 
@@ -276,8 +432,9 @@ function setEditorText(text) {
 }
 
 function updateHeight() {
-  const editorPage = document.getElementById("page");
-  document.body.style.minHeight = editorPage.offsetHeight + 120 + "px";
+  // No se fija minHeight en px duros sobre body para evitar saltos de layout
+  // durante el scroll rápido. El body ya tiene min-height: 100dvh en CSS
+  // y #page crece naturalmente con su contenido.
 }
 
 function scrollToCaret() {
@@ -315,7 +472,7 @@ async function guardar(mensaje) {
   const hora = now.toTimeString().slice(0, 8);
 
   try {
-    const res = await fetch(SUPABASE_URL + "/rest/v1/" + TABLE, {
+    const response = await fetch(SUPABASE_URL + "/rest/v1/" + TABLE, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -330,45 +487,56 @@ async function guardar(mensaje) {
         color: colorSesion,
       }),
     });
-    if (res.ok) {
-      const rows = await res.json();
-      const id = rows?.[0]?.id;
-      const fecha = rows?.[0]?.fecha;
-      agregarMensaje(colorSesion, mensaje, id, fecha);
-      const localRows = loadLocalMessages();
-      if (id && !localRows.some((item) => item.id === id)) {
-        localRows.push({ id, mensaje, color: colorSesion, fecha: fecha });
-        saveLocalMessages(localRows);
-      }
-      setCanvasImage(true);
-      try {
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
-        const o = ctx.createOscillator();
-        const g = ctx.createGain();
-        o.connect(g);
-        g.connect(ctx.destination);
-        o.type = "sawtooth";
-        o.frequency.setValueAtTime(1320, ctx.currentTime);
-        o.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.12);
-        g.gain.setValueAtTime(0.18, ctx.currentTime);
-        g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
-        o.start(ctx.currentTime);
-        o.stop(ctx.currentTime + 0.35);
-      } catch (e) {}
-      return id || null;
-    } else {
-      const txt = await res.text();
-      setStatus("✗ error: " + txt, "#e53935");
-      console.error(txt);
-      return null;
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Error guardando mensaje:", response.status, errorText);
+      throw new Error(`HTTP ${response.status}: ${errorText}`);
     }
-  } catch (e) {
-    setStatus("✗ sin conexión. El mensaje se guarda localmente.", "#e53935");
+
+    const rows = await response.json();
+    const id = rows?.[0]?.id;
+    const fechaGuardada = rows?.[0]?.fecha || fecha;
+
+    agregarMensaje(colorSesion, mensaje, id, fechaGuardada);
+
     const localRows = loadLocalMessages();
-    localRows.push({ id: Date.now(), mensaje, color: colorSesion });
+    if (id && !localRows.some((item) => item.id === id)) {
+      localRows.push({ id, mensaje, color: colorSesion, fecha: fechaGuardada });
+      saveLocalMessages(localRows);
+    }
+
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.connect(g);
+      g.connect(ctx.destination);
+      o.type = "sawtooth";
+      o.frequency.setValueAtTime(1320, ctx.currentTime);
+      o.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.12);
+      g.gain.setValueAtTime(0.18, ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+      o.start(ctx.currentTime);
+      o.stop(ctx.currentTime + 0.35);
+    } catch (e) {}
+
+    return id || null;
+  } catch (e) {
+    console.error("Error guardando mensaje:", e);
+    setStatus("✗ sin conexión. El mensaje se guarda localmente.", "#e53935");
+
+    const localRows = loadLocalMessages();
+    const id = Date.now();
+    localRows.push({
+      id,
+      mensaje,
+      color: colorSesion,
+      fecha: fecha,
+    });
     saveLocalMessages(localRows);
-    agregarMensaje(colorSesion, mensaje);
-    console.error(e);
+    agregarMensaje(colorSesion, mensaje, id, fecha);
+
     return null;
   }
 }
@@ -388,22 +556,8 @@ function insertTextAtCursor(text) {
   scrollToCaret();
 }
 
-setCanvasImage(false).then(() => {
+loadInitialCanvasImage().then(() => {
   mostrarHint();
-});
-
-// Hint de /tip: aparece siempre que llegás al tope del scroll
-let _tipHintCooldown = false;
-window.addEventListener("scroll", () => {
-  if (window.scrollY < 5 && !_tipHintCooldown) {
-    _tipHintCooldown = true;
-    mostrarHintPersonalizado(
-      'Probá guardando <span style="color:#7b1fa2">/tip</span>',
-    );
-    setTimeout(() => {
-      _tipHintCooldown = false;
-    }, 10000);
-  }
 });
 
 btnCanvas.addEventListener(
@@ -454,7 +608,6 @@ async function confirmar() {
     return;
   }
 
-  // No normalizar saltos de línea, respetar lo que escribió el usuario
   guardando = true;
   setEditorText("");
   editor.style.color = TEXTO_COLOR;
@@ -720,3 +873,44 @@ cargar().then(() => {
     statusEl.style.color = "#e67e00";
   }
 });
+
+// ========================
+// TIP AUTOMÁTICO POR INACTIVIDAD
+// ========================
+
+(function () {
+  const TIP_IDLE_KEY = "naim_tip_idle_shown_today";
+  const hoy = new Date().toLocaleDateString("en-CA", {
+    timeZone: "America/Argentina/Buenos_Aires",
+  });
+
+  if (localStorage.getItem(TIP_IDLE_KEY) === hoy) return;
+  if (Math.random() > 0.4) return;
+
+  let idleTimer = null;
+
+  function arrancarTimer() {
+    idleTimer = setTimeout(() => {
+      const texto = editor.textContent.trim();
+      if (texto.length > 0) return;
+      localStorage.setItem(TIP_IDLE_KEY, hoy);
+      mostrarHintPersonalizado(
+        'Probá guardando <span style="color:#7b1fa2">/tip</span>',
+      );
+    }, 90000);
+  }
+
+  const ONBOARDING_DONE_KEY = "naim_onboarding_done";
+  if (localStorage.getItem(ONBOARDING_DONE_KEY)) {
+    arrancarTimer();
+  } else {
+    window.addEventListener(
+      "btn-hint-finished",
+      () => {
+        localStorage.setItem(ONBOARDING_DONE_KEY, "1");
+        arrancarTimer();
+      },
+      { once: true },
+    );
+  }
+})();
