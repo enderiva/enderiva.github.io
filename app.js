@@ -81,9 +81,6 @@ function insertarSeparadorFecha(isoDate) {
 }
 
 let ultimaFechaRenderizada = null;
-let fechaMasAntigua = null;
-let hasMasHistoria = true;
-let cargandoHistoria = false;
 
 function agregarMensaje(color, mensaje, id, fecha) {
   if (id && renderedMessageIds.has(id)) return;
@@ -107,134 +104,6 @@ function agregarMensaje(color, mensaje, id, fecha) {
   renderConLinks(span, mensaje);
   committedEl.appendChild(span);
 }
-
-function prependearMensajes(rows) {
-  if (!rows.length) return;
-  const frag = document.createDocumentFragment();
-  let fechaDelBloque = null;
-
-  rows.forEach((r) => {
-    const fechaDia = (r.fecha || "").slice(0, 10);
-    if (!fechaDelBloque) fechaDelBloque = fechaDia;
-    const span = document.createElement("span");
-    span.className = "msg";
-    span.style.color = r.color || "#000";
-    if (r.id) {
-      span.dataset.id = String(r.id);
-      renderedMessageIds.add(r.id);
-    }
-    let msg = (r.mensaje || "").replace(/\u00A0/g, " ").replace(/\u200B/g, "");
-    if (msg.trim() === "" && msg.length === 0) return;
-    renderConLinks(span, msg);
-    frag.appendChild(span);
-  });
-
-  if (fechaDelBloque) {
-    const div = document.createElement("div");
-    div.className = "date-separator";
-    div.textContent = formatearFechaSeparador(fechaDelBloque);
-    frag.insertBefore(div, frag.firstChild);
-    fechaMasAntigua = fechaDelBloque;
-  }
-
-  const scrollBefore = document.body.scrollHeight;
-  committedEl.insertBefore(frag, committedEl.firstChild);
-  const added = document.body.scrollHeight - scrollBefore;
-  window.scrollBy(0, added);
-}
-
-function fechaAnterior(isoDate) {
-  const [y, m, d] = isoDate.split("-").map(Number);
-  const dt = new Date(y, m - 1, d);
-  dt.setDate(dt.getDate() - 1);
-  return dt.toISOString().slice(0, 10);
-}
-
-async function cargarDiaAnterior(diaExacto) {
-  if (cargandoHistoria || !hasMasHistoria || !fechaMasAntigua) return;
-  cargandoHistoria = true;
-  const diaAPedir = diaExacto || fechaAnterior(fechaMasAntigua);
-  setStatus("cargando historia...", "#aaa");
-  await new Promise((r) => setTimeout(r, 380));
-
-  try {
-    const res = await fetch(
-      SUPABASE_URL +
-        "/rest/v1/" +
-        TABLE +
-        "?select=id,mensaje,color,fecha&fecha=eq." +
-        diaAPedir +
-        "&order=id.asc",
-      {
-        headers: {
-          apikey: SUPABASE_KEY,
-          Authorization: "Bearer " + SUPABASE_KEY,
-        },
-      },
-    );
-    if (res.ok) {
-      const rows = await res.json();
-      if (!rows.length) {
-        fechaMasAntigua = diaAPedir;
-        const resPrev = await fetch(
-          SUPABASE_URL +
-            "/rest/v1/" +
-            TABLE +
-            "?select=fecha&fecha=lt." +
-            diaAPedir +
-            "&order=fecha.desc&limit=1",
-          {
-            headers: {
-              apikey: SUPABASE_KEY,
-              Authorization: "Bearer " + SUPABASE_KEY,
-            },
-          },
-        );
-        if (resPrev.ok) {
-          const prevRows = await resPrev.json();
-          if (!prevRows.length) {
-            hasMasHistoria = false;
-            setStatus("", "");
-          } else {
-            fechaMasAntigua = prevRows[0].fecha.slice(0, 10);
-            cargandoHistoria = false;
-            await cargarDiaAnterior(fechaMasAntigua);
-            return;
-          }
-        } else {
-          hasMasHistoria = false;
-        }
-      } else {
-        prependearMensajes(rows);
-        const localRows = loadLocalMessages();
-        const ids = new Set(localRows.map((r) => r.id));
-        const nuevos = rows.filter((r) => !ids.has(r.id));
-        saveLocalMessages([...nuevos, ...localRows]);
-      }
-      setStatus("", "");
-    } else {
-      setStatus("✗ error al cargar historia", "#e53935");
-    }
-  } catch (e) {
-    const localRows = loadLocalMessages();
-    const diaRows = localRows.filter(
-      (r) => (r.fecha || "").slice(0, 10) === diaAPedir,
-    );
-    if (diaRows.length) {
-      prependearMensajes(diaRows);
-    } else {
-      hasMasHistoria = false;
-    }
-    setStatus("", "");
-  }
-  cargandoHistoria = false;
-}
-
-window.addEventListener("scroll", () => {
-  if (window.scrollY < 40 && hasMasHistoria && !cargandoHistoria) {
-    cargarDiaAnterior();
-  }
-});
 
 // ============================================================
 // Funciones mejoradas: scroll suave, foco y extracción de texto
@@ -710,116 +579,82 @@ function estaAlFinal() {
   return window.scrollY + window.innerHeight >= document.body.scrollHeight - 60;
 }
 
-function fechaHoy() {
-  return new Date().toLocaleDateString("en-CA", {
-    timeZone: "America/Argentina/Buenos_Aires",
+function renderizarMensajes(rows) {
+  committedEl.innerHTML = "";
+  ultimaFechaRenderizada = null;
+  renderedMessageIds.clear();
+  rows.forEach((r) => {
+    agregarMensaje(r.color || "#000", r.mensaje, r.id, r.fecha);
   });
 }
 
-async function cargar() {
-  setStatus("cargando...", "#aaa");
-  const hoy = fechaHoy();
-  const localRows = loadLocalMessages();
+async function fetchTodosLosMensajes() {
+  const PAGE_SIZE = 1000;
+  let desde = 0;
+  let todas = [];
+  let ultimoIdVisto = null;
 
-  if (localRows.length) {
-    const localHoy = localRows.filter(
-      (r) => (r.fecha || "").slice(0, 10) === hoy,
-    );
-    committedEl.innerHTML = "";
-    ultimaFechaRenderizada = null;
-    fechaMasAntigua = null;
-    localHoy.forEach((r) => {
-      agregarMensaje(r.color || "#000", r.mensaje, r.id, r.fecha);
-    });
-    if (localHoy.length) fechaMasAntigua = hoy;
-    const hayAntes = localRows.some((r) => (r.fecha || "").slice(0, 10) < hoy);
-    hasMasHistoria = hayAntes;
-    setStatus("cargando desde caché...", "#888");
-  }
-
-  try {
+  while (true) {
     const res = await fetch(
       SUPABASE_URL +
         "/rest/v1/" +
         TABLE +
-        "?select=id,mensaje,color,fecha&fecha=eq." +
-        hoy +
-        "&order=id.asc",
+        "?select=id,mensaje,color,fecha&order=id.asc",
       {
         headers: {
           apikey: SUPABASE_KEY,
           Authorization: "Bearer " + SUPABASE_KEY,
+          Range: desde + "-" + (desde + PAGE_SIZE - 1),
         },
       },
     );
-    if (res.ok) {
-      const rows = await res.json();
-      committedEl.innerHTML = "";
-      ultimaFechaRenderizada = null;
-      fechaMasAntigua = null;
-      renderedMessageIds.clear();
-      rows.forEach((r) => {
-        agregarMensaje(r.color || "#000", r.mensaje, r.id, r.fecha);
-      });
-      if (rows.length) fechaMasAntigua = hoy;
 
-      const sinHoy = localRows.filter(
-        (r) => (r.fecha || "").slice(0, 10) !== hoy,
-      );
-      saveLocalMessages([...sinHoy, ...rows]);
-
-      const resPrev = await fetch(
-        SUPABASE_URL +
-          "/rest/v1/" +
-          TABLE +
-          "?select=fecha&fecha=lt." +
-          hoy +
-          "&order=fecha.desc&limit=1",
-        {
-          headers: {
-            apikey: SUPABASE_KEY,
-            Authorization: "Bearer " + SUPABASE_KEY,
-          },
-        },
-      );
-      if (resPrev.ok) {
-        const prevRows = await resPrev.json();
-        hasMasHistoria = prevRows.length > 0;
-        if (hasMasHistoria && !fechaMasAntigua)
-          fechaMasAntigua = prevRows[0].fecha.slice(0, 10);
-      }
-
-      setStatus("", "");
-      if (!rows.length && hasMasHistoria) {
-        await cargarDiaAnterior(fechaMasAntigua);
-      }
-      requestAnimationFrame(() => {
-        window.scrollTo({
-          top: document.body.scrollHeight,
-          behavior: "smooth",
-        });
-        scrollToEditorAndFocus();
-      });
-    } else {
+    if (!res.ok) {
       const txt = await res.text();
-      setStatus("✗ error al cargar: " + txt, "#e53935");
+      throw new Error("HTTP " + res.status + ": " + txt);
     }
+
+    const rows = await res.json();
+    if (!rows.length) break;
+
+    const idUltimaFila = rows[rows.length - 1].id;
+    if (idUltimaFila === ultimoIdVisto) break; // el server ignoró el Range: evita loop infinito
+    ultimoIdVisto = idUltimaFila;
+
+    todas = todas.concat(rows);
+    if (rows.length < PAGE_SIZE) break;
+    desde += PAGE_SIZE;
+  }
+
+  return todas;
+}
+
+async function cargar() {
+  setStatus("cargando...", "#aaa");
+  const localRows = loadLocalMessages();
+
+  if (localRows.length) {
+    renderizarMensajes(localRows);
+    setStatus("cargando desde caché...", "#888");
+  }
+
+  try {
+    const rows = await fetchTodosLosMensajes();
+    renderizarMensajes(rows);
+    saveLocalMessages(rows);
+    setStatus("", "");
+
+    requestAnimationFrame(() => {
+      window.scrollTo({
+        top: document.body.scrollHeight,
+        behavior: "smooth",
+      });
+      scrollToEditorAndFocus();
+    });
   } catch (e) {
     console.error(e);
     if (localRows.length > 0) {
-      const localHoy = localRows.filter(
-        (r) => (r.fecha || "").slice(0, 10) === hoy,
-      );
-      committedEl.innerHTML = "";
-      ultimaFechaRenderizada = null;
-      fechaMasAntigua = null;
-      localHoy.forEach((r) => {
-        agregarMensaje(r.color || "#000", r.mensaje, r.id, r.fecha);
-      });
-      if (localHoy.length) fechaMasAntigua = hoy;
-      hasMasHistoria = localRows.some(
-        (r) => (r.fecha || "").slice(0, 10) < hoy,
-      );
+      renderizarMensajes(localRows);
       setStatus("Offline. Mostrando caché local.", "#e53935");
     } else {
       setStatus("✗ sin conexión. No hay datos locales.", "#e53935");

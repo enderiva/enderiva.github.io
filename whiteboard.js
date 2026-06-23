@@ -2,13 +2,7 @@
 // WHITEBOARD COLABORATIVA EN TIEMPO REAL
 // ========================
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const SUPABASE_URL = "https://iypxmjxmhlkhkiwadann.supabase.co";
-const SUPABASE_KEY =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5cHhtanhtaGxraGtpd2FkYW5uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMjk4NTcsImV4cCI6MjA5NjcwNTg1N30.nEahrHZdBETYGRFNtkAKHT8Tig_0crHa5PA9gQ0PVXE";
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+import { supabase, SUPABASE_URL, SUPABASE_KEY } from "./supabase.js";
 
 const _isMobile = !window.matchMedia("(min-width: 768px)").matches;
 
